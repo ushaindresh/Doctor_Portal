@@ -1,0 +1,65 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Doctor Portal</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="style.css">
+</head>
+
+<body>
+  <div class="app">
+
+    <!-- Header -->
+    <div class="header">
+      <div class="logo">
+        <div class="logo-icon"></div>
+        Doctor Portal
+      </div>
+      <div class="header-spacer"></div>
+      <div class="user-section">
+        <span class="user-name" id="doctorDisplayName"></span>
+        <div class="avatar" id="doctorAvatar"></div>
+        <button class="logout" onclick="logoutDoctor()">
+          Log out
+        </button>
+      </div>
+    </div>
+
+    <!-- Body -->
+    <div class="body">
+
+      <!-- Sidebar -->
+      <div class="sidebar">
+        <div class="nav-group">
+          <div class="nav-title">Clinical</div>
+          <div class="nav-item active" data-page="consultation">
+            <div class="nav-dot"></div>
+            Patient consultation
+          </div>
+          <div class="nav-item" data-page="records">
+            <div class="nav-dot"></div>
+            Patient record search
+          </div>
+          <div class="nav-item" data-page="cases">
+            <div class="nav-dot"></div>
+            Similar case search
+          </div>
+        </div>
+      </div>
+
+      <!-- Main Content -->
+      <div class="main" id="mainContent"></div>
+
+    </div>
+  </div>
+  <script src="config.js"></script>
+  <script src="auth.js"></script>
+  <script src="app.js"></script>
+</body>
+
+</html>
