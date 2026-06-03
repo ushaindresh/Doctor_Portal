@@ -1,6 +1,3 @@
-// alert("CRITICAL TEST: The browser is successfully running app.js!");
-// console.log("CRITICAL TEST: app.js is alive!");
-
 // ─────────────────────────────────────────────
 // AUTH CHECK & INITIALIZATION
 // ─────────────────────────────────────────────
@@ -27,6 +24,25 @@ window.addEventListener("DOMContentLoaded", () => {
       .toUpperCase();
     avatar.innerText = initials;
   }
+
+  // Create global hidden pop-up hover panel container if it doesn't exist
+  if (!document.getElementById("global-hover-preview-panel")) {
+    const previewContainer = document.createElement("div");
+    previewContainer.id = "global-hover-preview-panel";
+    previewContainer.style.position = "fixed";
+    previewContainer.style.display = "none";
+    previewContainer.style.zIndex = "99999";
+    previewContainer.style.pointerEvents = "none"; // Prevents mouse traps
+    previewContainer.style.background = "#ffffff";
+    previewContainer.style.boxShadow = "0 10px 25px -5px rgba(0,0,0,0.3), 0 8px 10px -6px rgba(0,0,0,0.3)";
+    previewContainer.style.border = "2px solid #14b8a6";
+    previewContainer.style.borderRadius = "8px";
+    previewContainer.style.padding = "4px";
+    previewContainer.style.width = "400px";
+    previewContainer.style.height = "400px";
+    previewContainer.style.overflow = "hidden";
+    document.body.appendChild(previewContainer);
+  }
 });
 
 // ─────────────────────────────────────────────
@@ -37,19 +53,19 @@ let currentStep = 1;
 let selectedCase = null;
 
 // Dynamic Filter State Trackers
-let activeRecordFilter = "all"; // Options: "all", "recent", "my-patients"
-let activeTimeFilter = 5;       // Options: 0.03 (1mo), 0.5 (6mo), 1 (1yr), 3 (3yr), 5 (5yr)
+let activeRecordFilter = "all";
+let activeTimeFilter = 5;
 
 // Clean Data Layer State Layout
 let formData = {
-  patientId: generatePatientId(), 
+  patientId: generatePatientId(),
   patientName: "",
-  visitDate: new Date().toISOString().split('T')[0], // Automatically defaults to today
+  visitDate: new Date().toISOString().split('T')[0],
   visitType: "OPD consultation",
   referringDoctor: "",
   chiefComplaint: "",
   clinicalNotes: "",
-  files: [], 
+  files: [],
 };
 
 // ─────────────────────────────────────────────
@@ -69,7 +85,6 @@ function render() {
   const main = document.getElementById("mainContent");
   if (!main) return;
 
-  // Track dynamic active navigation highlight states inside the sidebar
   document.querySelectorAll(".nav-item").forEach((item) => {
     item.classList.toggle("active", item.dataset.page === currentPage);
   });
@@ -148,7 +163,7 @@ function renderConsultation(main) {
         <div class="form-row">
           <div class="form-group full">
             <label class="form-label">Referring doctor (if any)</label>
-            <input id="f-referringDoctor" type="text" class="form-input" placeholder="Optional" value="${formData.referringDoctor}">
+            <input id="f-referringDoctor" type="text" class="form-input" placeholder="Optional name or email address" value="${formData.referringDoctor}">
           </div>
         </div>
         <div class="form-row">
@@ -191,6 +206,28 @@ function renderConsultation(main) {
         </div>
       </div>`;
   } else {
+    const refDoc = formData.referringDoctor ? formData.referringDoctor.trim() : "";
+    let refDocHTML = "Not provided";
+    
+    if (refDoc) {
+      const emailSubject = encodeURIComponent(`Medical Referral Case Update: ${formData.patientId}`);
+      const emailBody = encodeURIComponent(
+        `Dear Doctor,\n\n` +
+        `This is a medical case notification from the Clinical Portal network:\n\n` +
+        `- Patient Reference ID: ${formData.patientId}\n` +
+        `- Patient Profile Name: ${formData.patientName || "Not provided"}\n` +
+        `- Encounter Date: ${formData.visitDate}\n` +
+        `- Primary Encounter Classification: ${formData.visitType}\n` +
+        `- Chief Medical Complaint: ${formData.chiefComplaint || "Not provided"}\n\n` +
+        `Please log into your clinic worklist terminal to access complete document sets.\n\n` +
+        `Kind regards,\n` +
+        `Dr. ${(loggedInDoctor && loggedInDoctor.name) ? loggedInDoctor.name : "Portal Attending Staff"}`
+      );
+      
+      const targetMailbox = refDoc.includes('@') ? refDoc : "";
+      refDocHTML = `<a href="mailto:${targetMailbox}?subject=${emailSubject}?body=${emailBody}" style="color: var(--teal); font-weight: 600; text-decoration: underline;">✉️ ${refDoc} (Click to open mail notification)</a>`;
+    }
+
     content = `
       <div class="content-box">
         <h2 class="content-title">Patient consultation — step 4</h2>
@@ -215,6 +252,10 @@ function renderConsultation(main) {
           <div class="review-row">
             <div class="review-label">Chief complaint</div>
             <div class="review-value">${formData.chiefComplaint || "Not provided"}</div>
+          </div>
+          <div class="review-row">
+            <div class="review-label">Referring Doctor</div>
+            <div class="review-value">${refDocHTML}</div>
           </div>
           <div class="review-row">
             <div class="review-label">Attached Files</div>
@@ -284,12 +325,80 @@ function bindConsultationEvents() {
   const uploadArea = document.getElementById("uploadArea");
   if (fileInput && uploadArea) {
     uploadArea.addEventListener("click", () => fileInput.click());
-    fileInput.addEventListener("change", (e) => {
-      const parsedFilesList = Array.from(e.target.files);
-      formData.files = parsedFilesList.map(file => ({
-        name: file.name,
-        size: (file.size / 1024).toFixed(1) + " KB"
-      }));
+    fileInput.addEventListener("change", async (e) => {
+      const selectedFiles = Array.from(e.target.files);
+      if (selectedFiles.length === 0) return;
+
+      const uploadStatus = document.getElementById("uploadedFiles");
+      if (uploadStatus) uploadStatus.innerHTML = `<span style="color:var(--teal); font-size:13px;">⏳ Uploading files to cloud...</span>`;
+
+      const uploadedResults = [];
+
+      for (const file of selectedFiles) {
+        try {
+          // Determine MIME type — browser sometimes leaves file.type empty for certain formats
+          const extMap = {
+            jpg: "image/jpeg", jpeg: "image/jpeg", png: "image/png",
+            pdf: "application/pdf", dcm: "application/dicom"
+          };
+          const ext = file.name.split('.').pop().toLowerCase();
+          const mimeType = file.type || extMap[ext] || "application/octet-stream";
+
+          // Step 1: Get pre-signed URL from your API
+          const urlRes = await fetch(
+            `${config.BASE_URL}/consultations?action=getUploadUrl` +
+            `&fileName=${encodeURIComponent(file.name)}` +
+            `&fileType=${encodeURIComponent(mimeType)}` +
+            `&folder=consultations` +
+            `&bucket=doctor-portal-files-25`
+          );
+
+          if (!urlRes.ok) {
+            const errText = await urlRes.text();
+            throw new Error(`Presign URL error ${urlRes.status}: ${errText}`);
+          }
+
+          const urlData = await urlRes.json();
+
+          if (!urlData.uploadUrl) {
+            throw new Error("API did not return an uploadUrl. Response: " + JSON.stringify(urlData));
+          }
+
+          // Step 2: PUT the file directly to S3 using the presigned URL
+          // IMPORTANT: Content-Type must exactly match what was used to generate the presigned URL
+          const s3Res = await fetch(urlData.uploadUrl, {
+            method: "PUT",
+            headers: { "Content-Type": mimeType },
+            body: file
+          });
+
+          if (!s3Res.ok) {
+            const s3Err = await s3Res.text();
+            throw new Error(`S3 PUT failed ${s3Res.status}: ${s3Err}`);
+          }
+
+          uploadedResults.push({
+            name: file.name,
+            size: (file.size / 1024).toFixed(1) + " KB",
+            url: urlData.fileUrl,
+            key: urlData.fileKey,
+            mimeType: mimeType
+          });
+
+        } catch (err) {
+          console.error("S3 Upload Error for", file.name, ":", err.message);
+          uploadedResults.push({
+            name: file.name,
+            size: (file.size / 1024).toFixed(1) + " KB",
+            url: "",
+            key: "",
+            error: true,
+            errorMsg: err.message
+          });
+        }
+      }
+
+      formData.files = uploadedResults;
       displayFilesList();
     });
   }
@@ -305,20 +414,26 @@ function displayFilesList() {
     filesWrapper.innerHTML = `<span style="color:var(--text-lighter); font-size:12px;">No documents selected.</span>`;
     return;
   }
-  filesWrapper.innerHTML = formData.files.map(file => `
-    <div style="margin-top:10px; padding:10px; background:#f5f5f4; border:1px solid var(--border); border-radius:var(--radius); display:flex; justify-content:space-between; align-items:center;">
-      <span>📄 ${file.name} <small style="color:var(--text-light);">(${file.size})</small></span>
-    </div>
-  `).join("");
+  filesWrapper.innerHTML = formData.files.map(file => {
+    const iconMap = { jpg: "🖼️", jpeg: "🖼️", png: "🖼️", pdf: "📄", dcm: "🩻" };
+    const ext = file.name.split('.').pop().toLowerCase();
+    const icon = iconMap[ext] || "📎";
+    const statusColor = file.error ? "#ef4444" : "#10b981";
+    const statusText = file.error ? `❌ Upload failed — ${file.errorMsg || "Check console for details"}` : "✅ Uploaded to S3";
+    return `
+      <div style="margin-top:10px; padding:10px 14px; background:#f5f5f4; border:1px solid var(--border); border-radius:var(--radius); display:flex; justify-content:space-between; align-items:center; gap:12px;">
+        <span style="font-size:13px;">${icon} ${file.name} <small style="color:var(--text-light);">(${file.size})</small></span>
+        <small style="color:${statusColor}; white-space:nowrap;">${statusText}</small>
+      </div>`;
+  }).join("");
 }
 
 // ─────────────────────────────────────────────
 // CENTRAL AWS CLOUD DATABASE HANDLER
 // ─────────────────────────────────────────────
 async function submitConsultation() {
-  // 1. Build the network payload mapping exactly to your backend DynamoDB table scheme
   const executionPayload = {
-    id: formData.patientId, // Maps to the expected 'id' Partition Key in DynamoDB
+    id: formData.patientId,
     patientId: formData.patientId,
     patientName: formData.patientName,
     doctorId: loggedInDoctor.id,
@@ -334,20 +449,17 @@ async function submitConsultation() {
   };
 
   try {
-    // 2. Dispatch an asynchronous HTTP POST request to your live API Gateway resource
     const response = await fetch(`${config.BASE_URL}/consultations`, {
       method: "POST",
-      headers: { 
-        "Content-Type": "application/json" 
+      headers: {
+        "Content-Type": "application/json"
       },
       body: JSON.stringify(executionPayload)
     });
 
-    // 3. Evaluate backend API responses
     if (response.ok || response.status === 201) {
-      alert("Consultation submitted successfully to AWS Cloud Database!");
+      alert("Consultation submitted successfully!");
 
-      // 4. Reset runtime memory state loop variables upon successful cloud save
       currentStep = 1;
       formData = {
         patientId: generatePatientId(),
@@ -370,60 +482,147 @@ async function submitConsultation() {
     alert("Network communication failure connecting to API Gateway. Please verify your internet connection or CORS settings.");
   }
 }
+
 // ─────────────────────────────────────────────
-// INTERACTIVE AWS PATIENT RECORD ENGINE WITH TOGGLE
+// HOVER PREVIEW CONTROLLER LOGIC
+// ─────────────────────────────────────────────
+function showHoverPreview(event, url, fileName) {
+  const panel = document.getElementById("global-hover-preview-panel");
+  if (!panel || !url) return;
+
+  const ext = fileName.split('.').pop().toLowerCase();
+
+  if (['jpg', 'jpeg', 'png'].includes(ext)) {
+    // Use an img tag — works as long as S3 bucket allows public read or has CORS configured
+    panel.innerHTML = `
+      <div style="width:100%; height:100%; background:#111; display:flex; align-items:center; justify-content:center; border-radius:6px; overflow:hidden;">
+        <img src="${url}" crossorigin="anonymous"
+          style="max-width:100%; max-height:100%; object-fit:contain;"
+          onerror="this.parentElement.innerHTML='<div style=\\'color:white;text-align:center;padding:16px;font-size:12px;\\'>⚠️ Preview unavailable.<br>S3 bucket may require CORS or public-read ACL.</div>'">
+      </div>`;
+  } else if (ext === 'pdf') {
+    // PDFs: use an embed tag — more reliable than iframe for S3 URLs
+    panel.innerHTML = `
+      <embed src="${url}#toolbar=0&navpanes=0&scrollbar=0"
+        type="application/pdf"
+        style="width:100%; height:100%; border:none; border-radius:6px;"
+        onerror="">
+      <div style="position:absolute;bottom:0;left:0;right:0;background:rgba(0,0,0,0.5);color:white;text-align:center;font-size:11px;padding:4px;border-radius:0 0 6px 6px;">📄 PDF Preview</div>`;
+    panel.style.position = "fixed"; // re-ensure
+  } else if (ext === 'dcm') {
+    panel.innerHTML = `
+      <div style="display:flex; flex-direction:column; align-items:center; justify-content:center; height:100%; color:var(--text-light); text-align:center; padding:20px;">
+        <span style="font-size:40px;">🩻</span>
+        <div style="font-weight:600; margin-top:10px; font-size:13px;">${fileName}</div>
+        <small style="color:var(--teal); margin-top:6px;">DICOM file — requires viewer app</small>
+      </div>`;
+  } else {
+    panel.innerHTML = `
+      <div style="display:flex; flex-direction:column; align-items:center; justify-content:center; height:100%; color:var(--text-light); text-align:center; padding:20px;">
+        <span style="font-size:40px;">📄</span>
+        <div style="font-weight:600; margin-top:10px; font-size:13px;">${fileName}</div>
+        <small style="color:var(--teal); margin-top:6px;">Medical Document</small>
+      </div>`;
+  }
+
+  panel.style.display = "block";
+  positionHoverPreview(event);
+}
+
+function positionHoverPreview(event) {
+  const panel = document.getElementById("global-hover-preview-panel");
+  if (!panel || panel.style.display === "none") return;
+
+  let top = event.clientY + 15;
+  let left = event.clientX + 15;
+
+  if (top + 400 > window.innerHeight) top = event.clientY - 415;
+  if (left + 400 > window.innerWidth) left = event.clientX - 415;
+
+  panel.style.top = top + "px";
+  panel.style.left = left + "px";
+}
+
+function hideHoverPreview() {
+  const panel = document.getElementById("global-hover-preview-panel");
+  if (panel) {
+    panel.style.display = "none";
+    panel.innerHTML = "";
+  }
+}
+
+// ─────────────────────────────────────────────
+// PATIENT RECORDS PAGE — READS FROM CONSULTATIONS TABLE
 // ─────────────────────────────────────────────
 async function renderRecords(main) {
-  // Capture current search bar value
   const searchInput = document.getElementById("recordSearch");
   const query = searchInput ? searchInput.value.trim() : "";
 
   let recordsHTML = "";
 
   try {
-    // 1. Fetch live data matching the query directly from your AWS /patients endpoint
-    const response = await fetch(`${config.BASE_URL}/patients?search=${encodeURIComponent(query)}`);
-    
+    const response = await fetch(`${config.BASE_URL}/consultations?search=${encodeURIComponent(query)}`);
+
     if (!response.ok) {
       throw new Error(`API Gateway returned status: ${response.status}`);
     }
-    
-    let records = await response.json();
 
-    // 2. Filter records based on the logged-in doctor if needed
-    // (If your AWS backend does not filter by doctorId automatically, we handle it here)
-    if (activeRecordFilter === "my-patients" && loggedInDoctor) {
-      records = records.filter(r => r.doctorId === loggedInDoctor.id);
+    let allRecords = await response.json();
+
+    let records = allRecords.filter(r => {
+      const recordDocId = r.doctorId || r.doctor || "";
+      const currentDocId = loggedInDoctor ? (loggedInDoctor.id || loggedInDoctor.doctorId) : "";
+      return String(recordDocId).trim() == String(currentDocId).trim();
+    });
+
+    if (query) {
+      const q = query.toLowerCase();
+      records = records.filter(r =>
+        (r.patientName && r.patientName.toLowerCase().includes(q)) ||
+        (r.patientId && r.patientId.toLowerCase().includes(q)) ||
+        (r.id && r.id.toLowerCase().includes(q)) ||
+        (r.chiefComplaint && r.chiefComplaint.toLowerCase().includes(q))
+      );
     }
 
-    // 3. Apply Sub-Filter Chip States Live on the fetched data
     if (activeRecordFilter === "recent") {
       const todayStr = new Date().toISOString().split('T')[0];
       records = records.filter(r => (r.visitDate || r.lastVisit) === todayStr);
     }
 
-    // 4. Construct HTML content based on Cloud Results
     if (!records || records.length === 0) {
       recordsHTML = `
         <div style="text-align:center; padding:40px; color:var(--text-light); background:white; border-radius:8px; border:1px solid var(--border)">
-          ⚠️ No medical records found matching this active cloud filter view.
+          ⚠️ No matching patient records found in your workspace list.
         </div>`;
     } else {
       recordsHTML = `<div class="results">` + records.map(p => {
-        // Unify properties from potential DynamoDB field variants (e.g. 'name' or 'patientName')
         const patientName = p.patientName || p.name || "Unknown Patient";
         const patientId = p.patientId || p.id;
         const visitDate = p.visitDate || p.lastVisit || "N/A";
-        const doctorName = p.doctorName || p.doctor || "Portal Staff";
-        
-        // Handle fallback strings for objects missing the status field property
+        const doctorName = p.doctorName || p.doctor || loggedInDoctor.name || "Portal Staff";
         const currentStatus = p.status || "Active";
         const isCurrentlyActive = currentStatus === "Active";
-        
-        // Determine look adjustments based on current status state
         const statusPillClass = isCurrentlyActive ? "pill-success" : "pill-info";
         const statusStyleOverrides = isCurrentlyActive ? "" : "background:#e2e8f0; color:#475569; border-color:#cbd5e1;";
         const statusButtonLabel = isCurrentlyActive ? "Mark Inactive" : "Mark Active";
+        
+        const targetId = p.id || p.patientId || patientId;
+
+        let documentsBadgeHTML = "";
+        if (p.files && p.files.length > 0) {
+          documentsBadgeHTML = p.files.map(f => {
+            if (!f.url) return "";
+            return `
+              <span class="tag" 
+                style="background:var(--teal-light); color:var(--teal-dark); border-color:var(--teal); cursor:help; user-select:none;"
+                onmouseenter="showHoverPreview(event, '${f.url}', '${f.name.replace(/'/g, "\\'")}')"
+                onmousemove="positionHoverPreview(event)"
+                onmouseleave="hideHoverPreview()">
+                📎 Hover to View: ${f.name}
+              </span>`;
+          }).join("");
+        }
 
         return `
         <div class="result-item" style="${!isCurrentlyActive ? 'opacity: 0.85; background: #fafafa;' : ''}">
@@ -433,8 +632,7 @@ async function renderRecords(main) {
               <div class="result-id">Patient ID: ${patientId}</div>
             </div>
             <div style="display: flex; align-items: center; gap: 12px;">
-              <button onclick="togglePatientStatus('${patientId}')" style="background:none; border:none; color:var(--teal); font-size:12px; cursor:pointer; padding:4px; font-weight:600; text-decoration:underline;">${statusButtonLabel}</button>
-              <button onclick="deleteRecord('${patientId}')" style="background:none; border:none; color:#ef4444; font-size:12px; cursor:pointer; padding:4px; font-weight:500;">Delete</button>
+              <button onclick="togglePatientStatus('${targetId}', '${currentStatus}')" style="background:none; border:none; color:var(--teal); font-size:12px; cursor:pointer; padding:4px; font-weight:600; text-decoration:underline;">${statusButtonLabel}</button>
               <span class="pill ${statusPillClass}" style="${statusStyleOverrides}">${currentStatus}</span>
             </div>
           </div>
@@ -442,12 +640,15 @@ async function renderRecords(main) {
             Encounter Date: ${visitDate} &bull; Visit Type: ${p.visitType || "OPD consultation"}
           </div>
           <div class="result-desc" style="margin-top: 6px; color: var(--text-light); font-size:13px; line-height:1.4;">
+            <strong>Referring Doctor:</strong> ${p.referringDoctor || 'Not specified'}
+          </div>
+          <div class="result-desc" style="margin-top: 6px; color: var(--text-light); font-size:13px; line-height:1.4;">
             <strong>Clinical Notes:</strong> ${p.clinicalNotes || 'No consultation notes detailed.'}
           </div>
-          <div class="result-meta">Department: Clinical Portal Specialists &bull; Attending: ${doctorName}</div>
+          <div class="result-meta">Department: Clinical Portal Specialists &bull; Attending: Dr ${doctorName}</div>
           <div class="result-tags">
             ${p.chiefComplaint ? `<span class="tag">${p.chiefComplaint}</span>` : ''}
-            ${p.files && p.files.length > 0 ? `<span class="tag" style="background:var(--teal-light); color:var(--teal-dark); border-color:var(--teal);">📎 ${p.files.length} Document(s) attached</span>` : ''}
+            ${documentsBadgeHTML}
           </div>
         </div>`;
       }).join("") + `</div>`;
@@ -456,26 +657,23 @@ async function renderRecords(main) {
     console.error("AWS Retrieval Error:", err);
     recordsHTML = `
       <div style="text-align:center; padding:40px; color:#ef4444; background:white; border-radius:8px; border:1px solid var(--border)">
-        ❌ Failed to sync or pull medical records from AWS Cloud Backend.
+        Failed to sync with cloud workspace.
       </div>`;
   }
 
-  // Inject layout controls and cloud records list into main panel
   main.innerHTML = `
     <div class="search-wrapper">
       <span class="search-icon">🔍</span>
       <input type="text" class="form-input search-input"
-        placeholder="Search by Patient ID, patient name, or registration number..."
+      placeholder="Search by Patient Name, Patient ID or Chief Complaint..."
         id="recordSearch" value="${query}">
     </div>
     <div class="filters">
-      <div class="filter-chip ${activeRecordFilter === 'all' ? 'active' : ''}" onclick="setRecordFilter('all')">All records</div>
-      <div class="filter-chip ${activeRecordFilter === 'recent' ? 'active' : ''}" onclick="setRecordFilter('recent')">Recent visits</div>
-      <div class="filter-chip ${activeRecordFilter === 'my-patients' ? 'active' : ''}" onclick="setRecordFilter('my-patients')">My patients</div>
+      <div class="filter-chip ${activeRecordFilter === 'all' ? 'active' : ''}" onclick="setRecordFilter('all')">My Patients</div>
+      <div class="filter-chip ${activeRecordFilter === 'recent' ? 'active' : ''}" onclick="setRecordFilter('recent')">Today's Visits</div>
     </div>
     ${recordsHTML}`;
 
-  // Restore cursor focus state to preserve flawless continuous user typing
   const cleanFieldRef = document.getElementById("recordSearch");
   if (cleanFieldRef) {
     cleanFieldRef.focus();
@@ -489,28 +687,27 @@ function setRecordFilter(filterType) {
   renderRecords(document.getElementById("mainContent"));
 }
 
-// ─────────────────────────────────────────────
-// NEW FUNCTION: ACTIVE / INACTIVE STATUS TOGGLE
-// ─────────────────────────────────────────────
-function togglePatientStatus(patientId) {
-  let globalDatabaseIndices = JSON.parse(localStorage.getItem("cloud_patient_consultations")) || [];
-  
-  globalDatabaseIndices = globalDatabaseIndices.map(p => {
-    if (p.patientId === patientId) {
-      // Toggle value logic sequence
-      const dynamicCurrentStatus = p.status || "Active";
-      p.status = dynamicCurrentStatus === "Active" ? "Inactive" : "Active";
-    }
-    return p;
-  });
+async function togglePatientStatus(recordId, currentStatus) {
+  const newStatus = currentStatus === "Active" ? "Inactive" : "Active";
 
-  localStorage.setItem("cloud_patient_consultations", JSON.stringify(globalDatabaseIndices));
-  renderRecords(document.getElementById("mainContent"));
+  try {
+    const response = await fetch(`${config.BASE_URL}/consultations`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ id: recordId, status: newStatus })
+    });
+
+    if (response.ok) {
+      renderRecords(document.getElementById("mainContent"));
+    } else {
+      alert("Failed to update status. Please try again.");
+    }
+  } catch (err) {
+    console.error("Status update error:", err);
+    alert("Network error updating status.");
+  }
 }
 
-// ─────────────────────────────────────────────
-// DELETION LOGIC ROUTINE FUNCTION
-// ─────────────────────────────────────────────
 function deleteRecord(patientId) {
   if (confirm(`Are you sure you want to permanently delete record ${patientId}?`)) {
     let globalDatabaseIndices = JSON.parse(localStorage.getItem("cloud_patient_consultations")) || [];
@@ -521,7 +718,7 @@ function deleteRecord(patientId) {
 }
 
 // ─────────────────────────────────────────────
-// CROSS-CASE INTELLIGENCE SEARCH ENGINE (TIMELINES) - AWS SYNCED
+// SIMILAR CASE SEARCH — READS FROM CONSULTATIONS TABLE
 // ─────────────────────────────────────────────
 async function renderCases(main) {
   const caseSearchInput = document.getElementById("caseSearch");
@@ -530,9 +727,8 @@ async function renderCases(main) {
   let caseListHTML = "";
 
   try {
-    // 1. Fetch case files directly from your AWS /cases endpoint 
-    const response = await fetch(`${config.BASE_URL}/cases?search=${encodeURIComponent(query)}`);
-    
+    const response = await fetch(`${config.BASE_URL}/consultations?search=${encodeURIComponent(query)}`);
+
     if (!response.ok) {
       throw new Error(`API Gateway returned status: ${response.status}`);
     }
@@ -540,22 +736,16 @@ async function renderCases(main) {
     const casesFromCloud = await response.json();
     const now = new Date();
 
-    // 2. Filter records based on your active timeline chip values (activeTimeFilter)
     let matchingCases = casesFromCloud.filter(c => {
-      // Use case date or fallback to present if missing
       const rawDate = c.visitDate || c.date;
-      if (!rawDate) return true; // Keep case if date metadata is unmapped
-      
+      if (!rawDate) return true;
       const caseDate = new Date(rawDate);
-      // Fallback parser if date format is a custom text string like "Nov 2023"
-      if (isNaN(caseDate.getTime())) return true; 
-
+      if (isNaN(caseDate.getTime())) return true;
       const diffTime = Math.abs(now - caseDate);
       const diffYears = diffTime / (1000 * 60 * 60 * 24 * 365.25);
       return diffYears <= activeTimeFilter;
     });
 
-    // 3. Construct HTML display items mirroring your exact design system
     if (!matchingCases || matchingCases.length === 0) {
       caseListHTML = `
         <div style="text-align:center; padding:40px; color:var(--text-light); background:white; border-radius:8px; border:1px solid var(--border)">
@@ -563,7 +753,6 @@ async function renderCases(main) {
         </div>`;
     } else {
       caseListHTML = `<div class="results">` + matchingCases.map((c, idx) => {
-        // Unify properties from potential local/DynamoDB field structure variants
         const caseId = c.patientId || c.id || "CASE-REF";
         const caseTitle = c.chiefComplaint || c.title || "General Health Consultation";
         const caseNotes = c.clinicalNotes || c.desc || "No notes mapped.";
@@ -585,9 +774,7 @@ async function renderCases(main) {
             <span class="pill pill-info">${visitType}</span>
           </div>
           <div class="result-title">${caseTitle}</div>
-          <div class="result-desc">
-            ${caseNotes}
-          </div>
+          <div class="result-desc">${caseNotes}</div>
           <div class="result-meta">Encounter Reference Date: ${caseDate} &bull; Origin Facility Provider: ${provider}</div>
           <div class="result-tags">
             <span class="tag">Shared Cloud Database</span>
@@ -600,7 +787,6 @@ async function renderCases(main) {
       }).join("") + `</div>`;
     }
 
-    // 4. Inject structural layouts with active tracking counts
     main.innerHTML = `
       <div class="search-wrapper">
         <span class="search-icon">🔍</span>
@@ -628,7 +814,6 @@ async function renderCases(main) {
       </div>`;
   }
 
-  // 5. Seamless cursor recovery for uninterrupted typing search inputs
   const searchBox = document.getElementById("caseSearch");
   if (searchBox) {
     searchBox.focus();
