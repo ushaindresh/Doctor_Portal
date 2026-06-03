@@ -1,11 +1,11 @@
 // ─────────────────────────────────────────────
 // AUTH CHECK & INITIALIZATION
 // ─────────────────────────────────────────────
-const loggedInDoctor = JSON.parse(localStorage.getItem("loggedInDoctor"));
+// const loggedInDoctor = JSON.parse(sessionStorage.getItem("loggedInDoctor"));
 
-if (!loggedInDoctor) {
-  window.location.href = "index.html";
-}
+// if (!loggedInDoctor) {
+//   window.location.href = "index.html";
+// }
 
 // Display authenticated doctor details in the layout header
 window.addEventListener("DOMContentLoaded", () => {
@@ -486,6 +486,42 @@ async function submitConsultation() {
 // ─────────────────────────────────────────────
 // HOVER PREVIEW CONTROLLER LOGIC
 // ─────────────────────────────────────────────
+
+// Fetches a 60-second presigned URL from Lambda, then shows preview
+async function fetchAndShowPreview(event, fileKey, fileName) {
+  const panel = document.getElementById("global-hover-preview-panel");
+  if (!panel) return;
+
+  // Show loading state immediately
+  panel.innerHTML = `
+    <div style="display:flex; align-items:center; justify-content:center; height:100%; color:var(--teal); font-size:13px;">
+      ⏳ Loading secure preview...
+    </div>`;
+  panel.style.display = "block";
+  positionHoverPreview(event);
+
+  try {
+    const res = await fetch(
+      `${config.BASE_URL}/consultations?action=getPreviewUrl&key=${encodeURIComponent(fileKey)}`
+    );
+    const data = await res.json();
+
+    if (data.url) {
+      showHoverPreview(event, data.url, fileName);
+    } else {
+      panel.innerHTML = `
+        <div style="display:flex; align-items:center; justify-content:center; height:100%; color:#ef4444; font-size:12px; padding:16px; text-align:center;">
+          ⚠️ Could not load preview.
+        </div>`;
+    }
+  } catch (err) {
+    panel.innerHTML = `
+      <div style="display:flex; align-items:center; justify-content:center; height:100%; color:#ef4444; font-size:12px; padding:16px; text-align:center;">
+        ⚠️ Preview error. Check network.
+      </div>`;
+  }
+}
+
 function showHoverPreview(event, url, fileName) {
   const panel = document.getElementById("global-hover-preview-panel");
   if (!panel || !url) return;
@@ -612,11 +648,13 @@ async function renderRecords(main) {
         let documentsBadgeHTML = "";
         if (p.files && p.files.length > 0) {
           documentsBadgeHTML = p.files.map(f => {
-            if (!f.url) return "";
+            if (!f.fileKey && !f.url) return "";
+            // Use fileKey for presigned URL, fallback to extracting key from url
+            const rawKey = f.fileKey || f.url.replace(`https://doctor-portal-files-25.s3.ap-south-1.amazonaws.com/`, "");
             return `
               <span class="tag" 
                 style="background:var(--teal-light); color:var(--teal-dark); border-color:var(--teal); cursor:help; user-select:none;"
-                onmouseenter="showHoverPreview(event, '${f.url}', '${f.name.replace(/'/g, "\\'")}')"
+                onmouseenter="fetchAndShowPreview(event, '${rawKey.replace(/'/g, "\\'")}', '${f.name.replace(/'/g, "\\'")}')"
                 onmousemove="positionHoverPreview(event)"
                 onmouseleave="hideHoverPreview()">
                 📎 Hover to View: ${f.name}
@@ -710,9 +748,9 @@ async function togglePatientStatus(recordId, currentStatus) {
 
 function deleteRecord(patientId) {
   if (confirm(`Are you sure you want to permanently delete record ${patientId}?`)) {
-    let globalDatabaseIndices = JSON.parse(localStorage.getItem("cloud_patient_consultations")) || [];
+    let globalDatabaseIndices = JSON.parse(sessionStorage.getItem("cloud_patient_consultations")) || [];
     globalDatabaseIndices = globalDatabaseIndices.filter(p => p.patientId !== patientId);
-    localStorage.setItem("cloud_patient_consultations", JSON.stringify(globalDatabaseIndices));
+    sessionStorage.setItem("cloud_patient_consultations", JSON.stringify(globalDatabaseIndices));
     renderRecords(document.getElementById("mainContent"));
   }
 }
