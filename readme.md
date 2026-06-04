@@ -1,91 +1,119 @@
 # Doctor Portal
 
-Doctor Portal is a cloud-based healthcare management web application developed using HTML, CSS, JavaScript, and AWS Cloud Services. The application helps doctors manage patient consultations, maintain clinical records, upload reports, and search patient history through a clean and responsive interface.
+Doctor Portal is a cloud-based healthcare management web application developed using HTML, CSS, JavaScript, and AWS Cloud Services. The application helps doctors manage patient consultations, maintain clinical records, upload medical documents, and search patient history through a clean and secure interface.
 
-The project is designed with a frontend-backend cloud architecture where the frontend communicates with AWS services using API Gateway and Lambda Functions. Patient and consultation data are stored securely in DynamoDB, while medical documents and reports can be stored in Amazon S3.
+The project is designed with a frontend-backend cloud architecture where the frontend communicates with AWS services using API Gateway and Lambda Functions. Patient and consultation data are stored securely in DynamoDB, while medical documents and reports are stored privately in Amazon S3 with presigned URL access.
 
 ## Technologies Used
 
 ### Frontend
-
 * HTML
 * CSS
 * JavaScript
 
 ### AWS Cloud Services
-
 * AWS API Gateway
 * AWS Lambda
 * Amazon DynamoDB
 * Amazon S3
+* AWS IAM
 
 ## Main Features
 
 ### Doctor Authentication
-
-* Doctor Signup
-* Doctor Login
+* Doctor Signup — credentials stored in DynamoDB via Lambda
+* Doctor Login — verified against DynamoDB
 * Logout functionality
-* Session handling using LocalStorage
+* Session handling using SessionStorage (auto-clears on browser tab close)
+* No sensitive credentials stored in localStorage
 
 ### Patient Consultation Workflow
-
-* Multi-step consultation form
-* Automatic Patient ID generation
+* Multi-step consultation form (4 steps)
+* Automatic Patient ID generation (HB-PAT-XXXXX format)
 * Clinical notes management
-* Visit type tracking
-* Referring doctor support
+* Visit type tracking (OPD, Follow-up, Emergency, Pre-op)
+* Referring doctor support with email notification link
 
 ### Medical Record Management
-
-* Patient record search
-* Similar case search
-* Dynamic filters
+* Patient record search — doctors can only view their own patients
+* Similar case search — anonymized shared database across all doctors
+* Dynamic filters (My Patients, Today's Visits)
 * Active/Inactive patient status management
 
-### File Upload System
+### Secure File Upload and Preview System
+* Upload MRI scans and reports directly to S3 via presigned URLs
+* Supports PDF, JPG, JPEG, PNG, WEBP, and DICOM files
+* Hover-to-preview panel for uploaded documents
+* Secure 60-second presigned URL generated per hover — files are never publicly accessible
+* DICOM files show a dedicated viewer message
 
-* Upload MRI scans and reports
-* Supports PDF, JPG, PNG, and DICOM files
+### Similar Case Search (Anonymized)
+* Searches across all doctors' consultation records
+* Patient names and doctor identities are fully hidden
+* Only shows Patient ID, chief complaint, clinical notes, visit type, and encounter date
+* Filtered to Last 1 Month by default
 
 ### AWS Cloud Integration
-
 * Frontend connected with AWS API Gateway
-* Lambda Functions process requests
-* DynamoDB stores patient and consultation records
-* S3 support for file storage
+* Lambda Functions handle all backend logic
+* DynamoDB stores consultation records and doctor accounts
+* S3 stores medical documents privately
+* Presigned URLs used for both upload and secure preview
 
 ## Project Architecture
 
+```
 Frontend (HTML/CSS/JS)
 ↓
 AWS API Gateway
 ↓
 AWS Lambda Functions
 ↓
-DynamoDB / S3
+DynamoDB (DoctorPortal_Consultations, DoctorPortal_Doctors)
+S3 (doctor-portal-files-25)
+```
+
+## API Gateway Routes
+
+| Method | Path | Purpose |
+|--------|------|---------|
+| POST | /auth | Doctor signup and login |
+| GET | /consultations | Fetch all or filtered consultations |
+| POST | /consultations | Create new consultation |
+| PATCH | /consultations | Update consultation status |
+| GET | /consultations?action=getUploadUrl | Get S3 presigned upload URL |
+| GET | /consultations?action=getPreviewUrl | Get S3 presigned preview URL (60s) |
+
+## DynamoDB Tables
+
+| Table | Primary Key | Purpose |
+|-------|-------------|---------|
+| DoctorPortal_Consultations | id (String) | Stores all patient consultation records |
+| DoctorPortal_Doctors | id (String) | Stores doctor account credentials |
 
 ## Folder Structure
 
+```
 Doctor_Portal/
-├── index.html
-├── signup.html
-├── dashboard.html
-├── style.css
-├── app.js
-├── auth.js
-├── config.js
+├── index.html       # Doctor login page
+├── signup.html      # Doctor signup page
+├── dashboard.html   # Main portal dashboard
+├── style.css        # Application styles
+├── app.js           # Main application logic
+├── auth.js          # Authentication functions
+├── config.js        # API Gateway base URL config
 └── README.md
+```
 
-## Future Improvements
+## Security Features
 
-* Role-based access
-* Real AWS authentication system
-* Secure file uploads to S3
-* Patient analytics dashboard
-* Doctor appointment scheduling
-* Mobile responsive optimization
+* Passwords stored in DynamoDB (no localStorage)
+* SessionStorage used instead of localStorage — session ends when tab closes
+* S3 files are private — never publicly accessible
+* 60-second expiring presigned URLs for document preview
+* Doctor-level data isolation — each doctor sees only their own patients
+* Patient anonymization in Similar Case Search
 
 ## Purpose of the Project
 
-The purpose of this project is to demonstrate practical implementation of full-stack cloud application development using AWS services. It combines frontend development with serverless backend architecture and healthcare workflow management.
+The purpose of this project is to demonstrate practical implementation of full-stack cloud application development using AWS services. It combines frontend development with serverless backend architecture, secure document handling, and healthcare workflow management.
