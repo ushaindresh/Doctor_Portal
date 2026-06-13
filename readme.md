@@ -2,7 +2,9 @@
 
 Doctor Portal is a cloud-based healthcare management web application developed using HTML, CSS, JavaScript, and AWS Cloud Services. The application helps doctors manage patient consultations, maintain clinical records, upload medical documents, and search patient history through a clean and secure interface.
 
-The project is designed with a frontend-backend cloud architecture where the frontend communicates with AWS services using API Gateway and Lambda Functions. Patient and consultation data are stored securely in DynamoDB, while medical documents and reports are stored privately in Amazon S3 with presigned URL access.
+The project is designed with a frontend-backend cloud architecture where the frontend is hosted on Amazon S3 as a static website and communicates with AWS services using API Gateway and Lambda Functions. Patient and consultation data are stored securely in DynamoDB, while medical documents and reports are stored privately in Amazon S3 with presigned URL access.
+
+**Project Status: ✅ Completed**
 
 ## Technologies Used
 
@@ -54,6 +56,7 @@ The project is designed with a frontend-backend cloud architecture where the fro
 * Filtered to Last 1 Month by default
 
 ### AWS Cloud Integration
+* Frontend hosted on Amazon S3 as a static website
 * Frontend connected with AWS API Gateway
 * Lambda Functions handle all backend logic
 * DynamoDB stores consultation records and doctor accounts
@@ -63,7 +66,7 @@ The project is designed with a frontend-backend cloud architecture where the fro
 ## Project Architecture
 
 ```
-Frontend (HTML/CSS/JS)
+Frontend (HTML/CSS/JS) — Hosted on S3 Static Website
 ↓
 AWS API Gateway
 ↓
@@ -91,6 +94,13 @@ S3 (doctor-portal-files-25)
 | DoctorPortal_Consultations | id (String) | Stores all patient consultation records |
 | DoctorPortal_Doctors | id (String) | Stores doctor account credentials |
 
+## S3 Buckets
+
+| Bucket | Purpose | Access |
+|--------|---------|--------|
+| doctor-portal-files-25 | Private medical document storage | Private — accessed via presigned URLs only |
+| doctor-portal-prototype | Static website hosting for frontend | Public read (static website) |
+
 ## Folder Structure
 
 ```
@@ -109,11 +119,28 @@ Doctor_Portal/
 
 * Passwords stored in DynamoDB (no localStorage)
 * SessionStorage used instead of localStorage — session ends when tab closes
-* S3 files are private — never publicly accessible
+* S3 medical files bucket is private — never publicly accessible
 * 60-second expiring presigned URLs for document preview
 * Doctor-level data isolation — each doctor sees only their own patients
 * Patient anonymization in Similar Case Search
 
+## Final Status
+
+| Task | Status |
+|------|--------|
+| Frontend — all 7 files | ✅ Complete |
+| AWS Lambda function | ✅ Complete |
+| AWS API Gateway | ✅ Complete |
+| DynamoDB — Doctors table | ✅ Complete |
+| DynamoDB — Consultations table | ✅ Complete |
+| S3 — Medical file storage | ✅ Complete |
+| S3 — Static website hosting | ✅ Complete |
+| Requirement 1 — Cloud Authentication | ✅ Complete |
+| Requirement 2 — Secure 60-Second Hover Preview | ✅ Complete |
+| Requirement 3 — Anonymized Similar Case Search | ✅ Complete |
+
 ## Purpose of the Project
 
 The purpose of this project is to demonstrate practical implementation of full-stack cloud application development using AWS services. It combines frontend development with serverless backend architecture, secure document handling, and healthcare workflow management.
+
+This project is now complete and closed.
